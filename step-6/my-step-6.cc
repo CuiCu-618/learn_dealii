@@ -54,6 +54,8 @@
 #include <deal.II/base/function.h>
 #include <deal.II/base/convergence_table.h>
 #include <deal.II/base/smartpointer.h>
+#include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/solver_richardson.h>
 
 using namespace dealii;
 
@@ -70,6 +72,10 @@ public:
 template <int dim>
 double Solution<dim>::value(const Point<dim> &p, const unsigned int) const {
     return std::sin(3 * numbers::PI * p[0]) * std::sin(2 * numbers::PI * p[1]);
+//    if (p.square() < 0.5 * 0.5)
+//        return 1;
+//    else
+//        return 0;
 }
 
 template <int dim>
@@ -79,6 +85,9 @@ Tensor<1, dim> Solution<dim>::gradient(const Point<dim> &p, const unsigned int) 
                                       std::sin(2 * numbers::PI * p[1]);
     return_val[1] = 2 * numbers::PI * std::sin(3 * numbers::PI * p[0]) *
                                       std::cos(2 * numbers::PI * p[1]);
+
+//    return_val[0] = 0;
+//    return_val[1] = 0;
     return return_val;
 }
 
@@ -92,8 +101,25 @@ public:
 
 template <int dim>
 double RightHandSide<dim>::value(const Point<dim> &p, const unsigned int) const {
-    return 13 * numbers::PI * numbers::PI *
+    return (13 * numbers::PI * numbers::PI + 0) *
                 std::sin(3 * numbers::PI * p[0]) * std::sin(2 * numbers::PI * p[1]);
+//    return -3 * std::cos(3 * numbers::PI * p[0]) * std::sin(2 * numbers::PI * p[1]) -
+//            2 * std::sin(3 * numbers::PI * p[0]) * std::cos(2 * numbers::PI * p[1]);
+
+}
+
+template <int dim>
+Tensor<1, dim> beta(const Point<dim> &p)
+{
+    Assert(dim >= 2, ExcNotImplemented());
+    Tensor<1, dim> wind_field;
+//    wind_field[0] = -p[1];
+//    wind_field[1] = p[0];
+//    if (wind_field.norm() > 1e-10)
+//        wind_field /= wind_field.norm();
+    wind_field[0] = 1;
+    wind_field[1] = 1;
+    return wind_field;
 }
 
 template <int dim>
@@ -230,18 +256,29 @@ void Step6<dim>::assemble_system()
       right_hand_side.value_list(fe_values.get_quadrature_points(),
                                  rhs_values);
 
+      const auto &q_points = fe_values.get_quadrature_points();
+
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
         {
           const double current_coefficient =
-            coefficient(fe_values.quadrature_point(q_index));
+            coefficient(q_points[q_index]);
+
+          auto beta_q = beta(q_points[q_index]);
           for (const unsigned int i : fe_values.dof_indices())
             {
               for (const unsigned int j : fe_values.dof_indices())
                 cell_matrix(i, j) +=
-                  (current_coefficient *              // a(x_q)
+                  ((current_coefficient *              // a(x_q)
                    fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                   fe_values.shape_grad(j, q_index) * // grad phi_j(x_q)
-                   fe_values.JxW(q_index));           // dx
+                   fe_values.shape_grad(j, q_index)   // grad phi_j(x_q)
+                   +
+                   fe_values.shape_value(i, q_index) *
+                   fe_values.shape_value(j, q_index) * 0
+                   +
+                   beta_q * 0 *
+                   fe_values.shape_value(i, q_index) *
+                   fe_values.shape_grad(j, q_index)) *
+                   fe_values.JxW(q_index));
 
               cell_rhs(i) += (rhs_values[q_index] *               // f(x)
                               fe_values.shape_value(i, q_index) * // phi_i(x_q)
@@ -260,10 +297,20 @@ void Step6<dim>::assemble_system()
                           exact_solution.gradient(fe_face_values.quadrature_point(q_index)) *
                           fe_face_values.normal_vector(q_index);
 
+                  const double boundary_value =
+                          exact_solution.value(fe_face_values.quadrature_point(q_index));
+
+                  const double beta_dot_n = beta(fe_face_values.quadrature_point(q_index)) *
+                          fe_face_values.normal_vector(q_index);
+
                   for (const unsigned int i : fe_face_values.dof_indices()){
-                      cell_rhs(i) += fe_face_values.shape_value(i, q_index) *
-                                     neumann_value *
-                                     fe_face_values.JxW(q_index);
+                      cell_rhs(i) += ((fe_face_values.shape_value(i, q_index) *
+                                     neumann_value
+                                     +
+                                     beta_dot_n * 0 *
+                                     fe_face_values.shape_value(i, q_index) *
+                                     boundary_value) *
+                                     fe_face_values.JxW(q_index));
                   }
               }
           }
@@ -283,6 +330,7 @@ void Step6<dim>::solve()
 {
   SolverControl            solver_control(1000, 1e-12);
   SolverCG<Vector<double>> solver(solver_control);
+//  SolverGMRES<Vector<double>> solver(solver_control);
 
   PreconditionSSOR<SparseMatrix<double>> preconditioner;
   preconditioner.initialize(system_matrix, 1.2);
@@ -411,7 +459,7 @@ template <int dim>
 void Step6<dim>::run()
 {
     const unsigned int n_cycles =
-            (refinement_mode == RefinementMode::global) ? 6 : 10;
+            (refinement_mode == RefinementMode::global) ? 4 : 8;
   for (unsigned int cycle = 0; cycle < n_cycles; ++cycle)
     {
 
@@ -421,7 +469,7 @@ void Step6<dim>::run()
           triangulation.begin_active()->face(0)->set_boundary_id(1);
           triangulation.begin_active()->face(1)->set_boundary_id(1);
 
-          triangulation.refine_global(1);
+          triangulation.refine_global(2);
         }
       else
         refine_grid();
@@ -443,6 +491,26 @@ void Step6<dim>::run()
   std::cout << std::endl;
   convergence_table.write_text(std::cout);
 
+  if (refinement_mode == RefinementMode::global)
+  {
+    convergence_table.add_column_to_supercolumn("cycle", "n cells");
+    convergence_table.add_column_to_supercolumn("cells", "n cells");
+    std::vector<std::string> new_order;
+    new_order.emplace_back("n cells");
+    new_order.emplace_back("H1");
+    new_order.emplace_back("L2");
+    convergence_table.set_column_order(new_order);
+    convergence_table.evaluate_convergence_rates(
+            "L2", ConvergenceTable::reduction_rate);
+    convergence_table.evaluate_convergence_rates(
+            "L2", ConvergenceTable::reduction_rate_log2);
+    convergence_table.evaluate_convergence_rates(
+            "H1", ConvergenceTable::reduction_rate);
+    convergence_table.evaluate_convergence_rates(
+            "H1", ConvergenceTable::reduction_rate_log2);
+    std::cout << std::endl;
+    convergence_table.write_text(std::cout);
+  }
 }
 
 
@@ -459,10 +527,11 @@ int main()
           << std::endl
           << std::endl;
 
-          FE_Q<2> fe(1);
+          FE_Q<2> fe(2);
 
           Step6<2> laplace_problem_2d(fe, Step6<2>::RefinementMode::global);
           laplace_problem_2d.run();
+          std::cout << std::endl;
       }
 
       {
@@ -472,10 +541,11 @@ int main()
           << std::endl
           << std::endl;
 
-          FE_Q<2> fe(1);
+          FE_Q<2> fe(2);
 
           Step6<2> laplace_problem_2d(fe, Step6<2>::RefinementMode::adaptive);
           laplace_problem_2d.run();
+          std::cout << std::endl;
       }
     }
   catch (std::exception &exc)
