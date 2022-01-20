@@ -24,7 +24,8 @@ SET(TARGET_SRC
 CMAKE_MINIMUM_REQUIRED(VERSION 3.1.0)
 
 FIND_PACKAGE(deal.II 9.3.0
-  HINTS ${deal.II_DIR} ${DEAL_II_DIR} /export/home/cucui/CLionProjects/dealii-9.3.1 $ENV{DEAL_II_DIR}
+  HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ 
+  /export/home/cucui/CLionProjects/dealii-9.3.1 $ENV{DEAL_II_DIR}
   )
 IF(NOT ${deal.II_FOUND})
   MESSAGE(FATAL_ERROR "\n"
