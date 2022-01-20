@@ -17,6 +17,10 @@
 #include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/sparse_matrix.h>
 
+#include <deal.II/matrix_free/fe_evaluation.h>
+#include <deal.II/matrix_free/matrix_free.h>
+#include <deal.II/matrix_free/operators.h>
+
 #include <iostream>
 
 using namespace dealii;
@@ -86,13 +90,70 @@ test_reference()
     }
 
   // output
-  system_matrix.print_formatted(std::cout);
+  //  system_matrix.print_formatted(std::cout);
   system_rhs.print(std::cout);
+}
+
+template <int dim, int fe_degree>
+void
+test_mf()
+{
+  Triangulation<dim>        triangulation;
+  FE_Q<dim>                 fe(fe_degree);
+  DoFHandler<dim>           dof_handler(triangulation);
+  MappingQ1<dim>            mapping;
+  AffineConstraints<double> constraints;
+  Vector<double>            system_rhs;
+
+  //  setup
+  GridGenerator::hyper_cube(triangulation);
+  triangulation.refine_global(1);
+  dof_handler.distribute_dofs(fe);
+  system_rhs.reinit(dof_handler.n_dofs());
+
+  typename MatrixFree<dim, double>::AdditionalData additional_data;
+  additional_data.tasks_parallel_scheme =
+    MatrixFree<dim, double>::AdditionalData::none;
+  additional_data.mapping_update_flags =
+    (update_gradients | update_JxW_values | update_quadrature_points);
+  std::shared_ptr<MatrixFree<dim, double>> system_mf_storage(
+    new MatrixFree<dim, double>());
+  system_mf_storage->reinit(mapping,
+                            dof_handler,
+                            constraints,
+                            QGauss<1>(fe.degree + 1),
+                            additional_data);
+  // assemble rhs
+  system_rhs = 0;
+  FEEvaluation<dim, fe_degree> phi(*system_mf_storage);
+  for (unsigned int cell = 0; cell < system_mf_storage->n_cell_batches();
+       ++cell)
+    {
+      phi.reinit(cell);
+      for (unsigned int q = 0; q < phi.n_q_points; ++q)
+        phi.submit_value(make_vectorized_array<double>(1.0), q);
+      phi.integrate(EvaluationFlags::values);
+      phi.distribute_local_to_global(system_rhs);
+    }
+  system_rhs.compress(VectorOperation::add);
+  system_rhs.print(std::cout);
+
+  std::cout << "Number of cells       : " << triangulation.n_active_cells()
+            << std::endl
+            << "Number of cell batches: " << system_mf_storage->n_cell_batches()
+            << std::endl;
+  const unsigned int n_vect_doubles = VectorizedArray<double>::size();
+  const unsigned int n_vect_bits    = 8 * sizeof(double) * n_vect_doubles;
+  std::cout << "Vectorization over " << n_vect_doubles
+            << " doubles = " << n_vect_bits << " bits ("
+            << Utilities::System::get_current_vectorization_level() << ")"
+            << std::endl;
 }
 
 int
 main()
 {
   test_reference<2, 1>();
+  test_mf<2, 1>();
   return 0;
 }
