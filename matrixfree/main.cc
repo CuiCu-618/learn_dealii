@@ -3,6 +3,7 @@
 //
 
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/timer.h>
 
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
@@ -90,8 +91,8 @@ test_reference()
     }
 
   // output
-  //  system_matrix.print_formatted(std::cout);
-  system_rhs.print(std::cout);
+  // system_matrix.print_formatted(std::cout);
+  // system_rhs.print(std::cout);
 }
 
 template <int dim, int fe_degree>
@@ -125,6 +126,8 @@ test_mf()
                             additional_data);
   // assemble rhs
   system_rhs = 0;
+  {
+  Timer time;
   FEEvaluation<dim, fe_degree> phi(*system_mf_storage);
   for (unsigned int cell = 0; cell < system_mf_storage->n_cell_batches();
        ++cell)
@@ -136,7 +139,10 @@ test_mf()
       phi.distribute_local_to_global(system_rhs);
     }
   system_rhs.compress(VectorOperation::add);
-  system_rhs.print(std::cout);
+  std::cout << "Assemble right hand side   (CPU/wall) " << time.cpu_time()
+            << "s/" << time.wall_time() << "s" << std::endl;
+  }
+  // system_rhs.print(std::cout);
 
   std::cout << "Number of cells       : " << triangulation.n_active_cells()
             << std::endl
