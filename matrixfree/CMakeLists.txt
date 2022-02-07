@@ -1,27 +1,33 @@
-##
-#  CMake script for the step-6 tutorial program:
-##
-
-# Set the name of the project and target:
-SET(TARGET "main")
-
-# Declare all source files the target consists of. Here, this is only
-# the one step-X.cc file, but as you expand your project you may wish
-# to add other source files as well. If your project becomes much larger,
-# you may want to either replace the following statement by something like
-#    FILE(GLOB_RECURSE TARGET_SRC  "source/*.cc")
-#    FILE(GLOB_RECURSE TARGET_INC  "include/*.h")
-#    SET(TARGET_SRC ${TARGET_SRC}  ${TARGET_INC})
-# or switch altogether to the large project CMakeLists.txt file discussed
-# in the "CMake in user projects" page accessible from the "User info"
-# page of the documentation.
-SET(TARGET_SRC
-  ${TARGET}.cc
-  )
-
-# Usually, you will not need to modify anything beyond this point...
-
 CMAKE_MINIMUM_REQUIRED(VERSION 3.1.0)
+
+PROJECT(MatrixFree)
+
+include_directories(/usr/local/bin/../include/)
+link_directories(/usr/local/bin/../lib/)
+add_definitions(-DLIKWID_PERFMON)
+
+
+find_package(likwid REQUIRED COMPONENTS marker OPTIONAL_COMPONENTS nvmarker
+              HINTS /usr/local/lib/)
+
+message(STATUS "")
+message(STATUS "likwid_FOUND: ${likwid_FOUND}")
+
+foreach(_VAR LIKWID_INCLUDES LIKWID_LIBRARIES LIKWID_ROOT_DIR
+    LIKWID_NVIDIA_INTERFACE LIKWID_FORTRAN_INTERFACE
+    LIKWID_INCLUDE_DIR LIKWID_LIBRARY LIKWID_INCLUDE_DIRS
+    LIKWID_LIBRARIES LIKWID_LIBRARY_DIRS)
+    message(STATUS "${_VAR}: ${${_VAR}}")
+endforeach()
+
+foreach(_VAR ${LIKWID_EXECUTABLE_OPTIONS})
+    message(STATUS "LIKWID_${_VAR}_EXECUTABLE: ${LIKWID_${_VAR}_EXECUTABLE}")
+endforeach()
+
+foreach(_VAR ${LIKWID_COMPONENT_OPTIONS})
+    message(STATUS "likwid_${_VAR}_FOUND: ${likwid_${_VAR}_FOUND}")
+endforeach()
+message(STATUS "")
 
 FIND_PACKAGE(deal.II 9.3.0
   HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ 
@@ -37,7 +43,7 @@ IF(NOT ${deal.II_FOUND})
 ENDIF()
 
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
-PROJECT(${TARGET})
 
-
-DEAL_II_INVOKE_AUTOPILOT()
+ADD_EXECUTABLE(main main.cc)
+TARGET_LINK_LIBRARIES(main likwid)
+DEAL_II_SETUP_TARGET(main)

@@ -27,6 +27,20 @@
 #include <fstream>
 #include <iostream>
 
+// This block enables compilation of the code with and without LIKWID in place
+#ifdef LIKWID_PERFMON
+#include <likwid.h>
+#else
+#define LIKWID_MARKER_INIT
+#define LIKWID_MARKER_THREADINIT
+#define LIKWID_MARKER_SWITCH
+#define LIKWID_MARKER_REGISTER(regionTag)
+#define LIKWID_MARKER_START(regionTag)
+#define LIKWID_MARKER_STOP(regionTag)
+#define LIKWID_MARKER_CLOSE
+#define LIKWID_MARKER_GET(regionTag, nevents, events, time, count)
+#endif
+
 using namespace dealii;
 
 template <int dim, int fe_degree>
@@ -189,7 +203,14 @@ test_mf()
 int
 main()
 {
+  LIKWID_MARKER_INIT;
+  LIKWID_MARKER_REGISTER("foo");
+
+  LIKWID_MARKER_START("foo");
 //  test_reference<2, 1>();
   test_mf<2, 1>();
+
+  LIKWID_MARKER_STOP("foo");
+  LIKWID_MARKER_CLOSE;
   return 0;
 }
